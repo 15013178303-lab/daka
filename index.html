@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>平安京日常</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"PingFang SC",sans-serif; background:linear-gradient(180deg,#2b1d1a,#4a2c25);
+    color:#f4e3c5; min-height:100vh; padding:20px; max-width:960px; margin:0 auto; }
+  h1 { text-align:center; font-size:22px; padding:16px 0; color:#e8c07d; }
+  .date { text-align:center; font-size:13px; color:#b39a7d; margin-bottom:16px; }
+  .topbar { display:flex; justify-content:flex-end; gap:10px; margin-bottom:8px; }
+  .topbar button { background:rgba(232,192,125,.15); color:#e8c07d; border:1px solid #e8c07d;
+    border-radius:8px; padding:6px 12px; font-size:13px; }
+
+  /* ===== 左右并排布局 ===== */
+  .groups { display:flex; gap:16px; align-items:flex-start; }
+  .group { flex:1; min-width:0; }
+  @media (max-width:700px){ .groups { flex-direction:column; } }
+
+  .group-title { font-size:15px; color:#e8c07d; margin:0 0 10px; padding-left:10px;
+    border-left:3px solid #e8c07d; display:flex; justify-content:space-between; align-items:center; }
+  .group-title .count { font-size:12px; color:#b39a7d; }
+  .task { display:flex; align-items:center; background:rgba(255,255,255,.06);
+    border:1px solid rgba(232,192,125,.25); border-radius:12px; padding:12px;
+    margin-bottom:10px; cursor:pointer; transition:.2s; }
+  .task.done { opacity:.5; }
+  .task.done .name { text-decoration:line-through; }
+  .check { width:22px; height:22px; border:2px solid #e8c07d; border-radius:50%;
+    margin-right:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    font-size:13px; color:#e8c07d; }
+  .task.done .check::after { content:"✓"; }
+  .name { font-size:15px; flex:1; }
+  .del { color:#d98c8c; padding:0 8px; display:none; }
+  .editing .del { display:block; }
+  .bar { margin-top:16px; font-size:14px; color:#e8c07d; padding:8px;
+    background:rgba(255,255,255,.06); border-radius:8px; }
+  .addrow { display:none; margin-top:12px; gap:8px; }
+  .editing .addrow { display:flex; }
+  .addrow input { flex:1; padding:10px; border-radius:8px; border:1px solid #e8c07d;
+    background:rgba(255,255,255,.08); color:#f4e3c5; font-size:15px; }
+  .addrow button { padding:10px 16px; border-radius:8px; border:none;
+    background:#e8c07d; color:#4a2c25; font-size:15px; }
+  .addtabs { display:none; gap:8px; margin-top:8px; }
+  .editing .addtabs { display:flex; }
+  .addtabs button { flex:1; padding:8px; border-radius:8px; font-size:13px;
+    border:1px solid #e8c07d; background:transparent; color:#e8c07d; }
+  .addtabs button.active { background:#e8c07d; color:#4a2c25; }
+</style>
+</head>
+<body>
+<h1>🏮 平安京日常</h1>
+<div class="date" id="date"></div>
+<div class="topbar">
+  <button onclick="resetAll()">↺ 恢复默认</button>
+  <button onclick="toggleEdit()" id="editBtn">⚙ 编辑</button>
+</div>
+<div class="groups">
+  <div class="group" id="col-daily"></div>
+  <div class="group" id="col-weekly"></div>
+</div>
+<div class="bar" id="bar"></div>
+<div class="addrow">
+  <input id="newTask" placeholder="输入任务名" onkeydown="if(event.key==='Enter')addTask()">
+  <button onclick="addTask()">添加</button>
+</div>
+<div class="addtabs">
+  <button id="tab-daily" class="active" onclick="setTab('daily')">＋加到日常</button>
+  <button id="tab-weekly" onclick="setTab('weekly')">＋加到周常</button>
+</div>
+<script>
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+const DEFAULT_TASKS = [
+  {name:'悬赏（6点）',type:'daily',done:false},
+  {name:'金币妖（0点）',type:'daily',done:false},
+  {name:'寮突破（10点）',type:'daily',done:false},
+  {name:'地鬼（20勾）',type:'daily',done:false},
+  {name:'友情点+祝福',type:'daily',done:false},
+  {name:'金币妖（12点）',type:'daily',done:false},
+  {name:'喂宠物',type:'daily',done:false},
+  {name:'逢魔4次+怪',type:'daily',done:false},
+  {name:'悬赏（18点）',type:'daily',done:false},
+  {name:'寮活-10次御魂',type:'daily',done:false},
+  {name:'寮活-麒麟',type:'daily',done:false},
+  {name:'寮活-道馆/材料',type:'daily',done:false},
+  {name:'秘闻竞速',type:'weekly',done:false},
+  {name:'周四魂王',type:'weekly',done:false},
+  {name:'周五魂海',type:'weekly',done:false},
+  {name:'英杰-源赖光',type:'weekly',done:false},
+  {name:'英杰-藤原',type:'weekly',done:false},
+  {name:'斗技',type:'weekly',done:false},
+  {name:'乐园-铲/百鬼奕',type:'weekly',done:false},
+  {name:'协斗',type:'weekly',done:false},
+  {name:'六道',type:'weekly',done:false},
+  {name:'兑换-寮功勋',type:'weekly',done:false},
+  {name:'兑换-秘卷紫蛇皮',type:'weekly',done:false},
+  {name:'兑换-40御灵卷',type:'weekly',done:false},
+  {name:'兑换-荣誉蓝票+黑碎',type:'weekly',done:false},
+  {name:'兑换-勋章蓝票+黑碎+体力',type:'weekly',done:false},
+  {name:'分享-图鉴1票',type:'weekly',done:false},
+  {name:'分享-地鬼20勾',type:'weekly',done:false},
+  {name:'分享-秘闻20勾',type:'weekly',done:false},
+  {name:'分享-召唤1票',type:'weekly',done:false}
+];
+let tasks;
+try { tasks = JSON.parse(store.get('onyx_tasks')||'null'); } catch(e){ tasks=null; }
+if (Array.isArray(tasks) && tasks.length){
+  tasks = tasks.map(t=>({name:String(t.name??t), type:t.type==='weekly'?'weekly':'daily', done:!!t.done}));
+} else { tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS)); }
+function dailyKey(){ return new Date().toLocaleDateString(); }
+function weeklyKey(){ const d=new Date(); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d.toLocaleDateString(); }
+function save(){ store.set('onyx_tasks', JSON.stringify(tasks)); }
+if (store.get('onyx_daily')!==dailyKey()){ tasks.forEach(t=>{if(t.type==='daily')t.done=false;}); store.set('onyx_daily',dailyKey()); save(); }
+if (store.get('onyx_weekly')!==weeklyKey()){ tasks.forEach(t=>{if(t.type==='weekly')t.done=false;}); store.set('onyx_weekly',weeklyKey()); save(); }
+let editing=false, addTab='daily';
+
+function groupHTML(g){
+  const items=tasks.map((t,i)=>({...t,i})).filter(t=>t.type===g.type);
+  if(!items.length) return `<div class="group-title">${g.title}<span class="count">暂无任务</span></div>`;
+  const doneN=items.filter(t=>t.done).length;
+  return `<div class="group-title">${g.title}<span class="count">${doneN} / ${items.length}</span></div>`+
+    items.map(t=>`<div class="task ${t.done?'done':''}" onclick="toggle(${t.i})">
+      <div class="check"></div><div class="name">${t.name}</div>
+      <div class="del" onclick="event.stopPropagation();del(${t.i})">✕</div></div>`).join('');
+}
+function render(){
+  const wd=['日','一','二','三','四','五','六'], d=new Date();
+  document.getElementById('date').textContent =
+    d.toLocaleDateString()+' 周'+wd[d.getDay()]+' · 日常每日重置 · 周常周一重置';
+  document.getElementById('col-daily').innerHTML =
+    groupHTML({title:'📅 日常（每天重置）', type:'daily'});
+  document.getElementById('col-weekly').innerHTML =
+    groupHTML({title:'🗓 周常（周一重置）', type:'weekly'});
+  const daily=tasks.filter(t=>t.type==='daily'), weekly=tasks.filter(t=>t.type==='weekly');
+  const dDone=daily.filter(t=>t.done).length, wDone=weekly.filter(t=>t.done).length;
+  let barText=`今日：${dDone}/${daily.length}　本周：${wDone}/${weekly.length}`;
+  if(daily.length&&dDone===daily.length) barText+=' 🎉 日常全清！';
+  if(weekly.length&&wDone===weekly.length) barText+=' 🎉 周常全清！';
+  document.getElementById('bar').textContent=barText;
+}
+function toggle(i){ if(editing)return; tasks[i].done=!tasks[i].done; save(); render(); }
+function del(i){ tasks.splice(i,1); save(); render(); }
+function setTab(t){ addTab=t;
+  document.getElementById('tab-daily').classList.toggle('active',t==='daily');
+  document.getElementById('tab-weekly').classList.toggle('active',t==='weekly'); }
+function addTask(){ const inp=document.getElementById('newTask');
+  if(inp.value.trim()){ tasks.push({name:inp.value.trim(),type:addTab,done:false}); inp.value=''; save(); render(); } }
+function toggleEdit(){ editing=!editing; document.body.classList.toggle('editing',editing);
+  document.getElementById('editBtn').textContent=editing?'✓ 完成':'⚙ 编辑'; }
+function resetAll(){ if(confirm('确定恢复默认任务清单吗？')){
+  tasks=JSON.parse(JSON.stringify(DEFAULT_TASKS)); save(); render(); } }
+render();
+</script>
+</body>
+</html>
